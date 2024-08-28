@@ -1,15 +1,15 @@
 /* eslint-disable import/no-named-as-default */
-import { writeFile } from 'fs';
-import { promisify } from 'util';
-import Queue from 'bull/lib/queue';
-import imgThumbnail from 'image-thumbnail';
-import mongoDBCore from 'mongodb/lib/core';
-import dbClient from './utils/db';
-import Mailer from './utils/mailer';
+import { writeFile } from "fs";
+import { promisify } from "util";
+import Queue from "bull/lib/queue";
+import imgThumbnail from "image-thumbnail";
+import mongoDBCore from "mongodb/lib/core";
+import dbClient from "./utils/db";
+import Mailer from "./utils/mailer";
 
 const writeFileAsync = promisify(writeFile);
-const fileQueue = new Queue('thumbnail generation');
-const userQueue = new Queue('email sending');
+const fileQueue = new Queue("thumbnail generation");
+const userQueue = new Queue("email sending");
 
 /**
  * Generates the thumbnail of an image with a given width size.
@@ -24,55 +24,57 @@ const generateThumbnail = async (filePath, size) => {
 };
 
 fileQueue.process(async (job, done) => {
-  const fileId = job.data.fileId || null;
-  const userId = job.data.userId || null;
+  const { fileId, userId } = job.data;
 
   if (!fileId) {
-    throw new Error('Missing fileId');
+    throw new Error("Missing fileId");
   }
   if (!userId) {
-    throw new Error('Missing userId');
+    throw new Error("Missing userId");
   }
-  console.log('Processing', job.data.name || '');
-  const file = await (await dbClient.filesCollection())
-    .findOne({
-      _id: new mongoDBCore.BSON.ObjectId(fileId),
-      userId: new mongoDBCore.BSON.ObjectId(userId),
-    });
+  console.log("Processing", job.data.name || "");
+  const file = await (
+    await dbClient.filesCollection()
+  ).findOne({
+    _id: new mongoDBCore.BSON.ObjectId(fileId),
+    userId: new mongoDBCore.BSON.ObjectId(userId),
+  });
   if (!file) {
-    throw new Error('File not found');
+    throw new Error("File not found");
   }
   const sizes = [500, 250, 100];
-  Promise.all(sizes.map((size) => generateThumbnail(file.localPath, size)))
-    .then(() => {
-      done();
-    });
+  Promise.all(
+    sizes.map((size) => generateThumbnail(file.localPath, size))
+  ).then(() => {
+    done();
+  });
 });
 
 userQueue.process(async (job, done) => {
   const userId = job.data.userId || null;
 
   if (!userId) {
-    throw new Error('Missing userId');
+    throw new Error("Missing userId");
   }
-  const user = await (await dbClient.usersCollection())
-    .findOne({ _id: new mongoDBCore.BSON.ObjectId(userId) });
+  const user = await (
+    await dbClient.usersCollection()
+  ).findOne({ _id: new mongoDBCore.BSON.ObjectId(userId) });
   if (!user) {
-    throw new Error('User not found');
+    throw new Error("User not found");
   }
   console.log(`Welcome ${user.email}!`);
   try {
-    const mailSubject = 'Welcome to ALX-Files_Manager by B3zaleel';
+    const mailSubject = "Welcome to Files Manager";
     const mailContent = [
-      '<div>',
-      '<h3>Hello {{user.name}},</h3>',
+      "<div>",
+      "<h3>Hello {{user.name}},</h3>",
       'Welcome to <a href="https://github.com/B3zaleel/alx-files_manager">',
-      'ALX-Files_Manager</a>, ',
-      'a simple file management API built with Node.js by ',
-      '<a href="https://github.com/B3zaleel">Bezaleel Olakunori</a>. ',
-      'We hope it meets your needs.',
-      '</div>',
-    ].join('');
+      "ALX-Files_Manager</a>, ",
+      "a simple file management API built with Node.js by ",
+      '<a href="https://github.com/leoemaxie">Emmanuel Lafenwa</a>. ',
+      "We hope it meets your needs.",
+      "</div>",
+    ].join("");
     Mailer.sendMail(Mailer.buildMessage(user.email, mailSubject, mailContent));
     done();
   } catch (err) {
