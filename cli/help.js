@@ -1,5 +1,5 @@
 class Help {
-  constructor(args) {
+  constructor() {
     this.commands = {
       help: [this.help, null],
       version: [this.version, 1],
@@ -10,7 +10,6 @@ class Help {
       remove: this.remove,
       scheduleBackup: this.scheduleBackup,
     };
-    this.length = args.length;
     this.version = "1.0.0";
   }
 
@@ -101,3 +100,5 @@ class Help {
     console.log("Help");
   }
 }
+
+export default Help;

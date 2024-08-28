@@ -2,9 +2,12 @@ import axios from "axios";
 import fs from "fs";
 import "node-cron";
 import "sha1";
-// import envLoader from "../utils/env_loader";
+import Help from "./help";
+import envLoader from "../utils/env_loader";
+import CheckArgs from "./argscheck";
+import { exit } from "process";
 
-// envLoader();
+envLoader();
 
 class CLI {
   constructor() {
@@ -12,10 +15,10 @@ class CLI {
     this.configDir = process.env.FILE_PATH || "/tmp/files_manager";
     this.authFile = `${this.configDir}/token.txt`;
     this.configFile = `${this.configDir}/config.json`;
-    this.token = this.getFile(this.authFile);
-    this.config = this.getFile(this.configFile);
-    this.cronJobs = this.getFile(`${this.configDir}/cron_jobs.json`);
-    this.logs = this.getFile(`${this.configDir}/logs`);
+    this.token = this.readFile(this.authFile);
+    this.config = this.readFile(this.configFile);
+    this.cronJobs = this.readFile(`${this.configDir}/cron_jobs.json`);
+    this.logs = this.readFile(`${this.configDir}/logs`);
     this.headers = {
       Authorization: `Bearer ${this.token}`,
     };
@@ -27,38 +30,44 @@ class CLI {
       remove: this.remove,
       schedule: this.schedule,
     };
+    this.help = new Help();
   }
 
   async run() {
     const command = process.argv[2];
+
     if (this.commands[command]) {
+      if (!CheckArgs.check()) {
+        new Help().getCommandHelp(command);
+        exit(1);
+      }
       await this.commands[command](...process.argv.slice(3));
     } else {
-      process.stdout.write("\x1b[31mCommand not found\x1b[0m\n");
+      process.stdout.write(this.help.getCommandHelp("help"));
+      exit(1);
     }
   }
 
-  login = async (username, password) => {
+  async login(username, password) {
     try {
-      const response = await axios.post(`${this.url}/users/auth`, {
+      await axios.post(`${this.url}/users/auth`, {
         email: username,
         password: password,
       });
+      this.config = {
+        ...this.config,
+        username: username,
+        password: sha1(password),
+      };
       fs.writeFileSync(`${this.authFile}`, response.data.token);
-      fs.writeFileSync(
-        `${this.configFile}`,
-        JSON.stringify({
-          username: username,
-          password: this.hashToken(password),
-        })
-      );
+      fs.writeFileSync(`${this.configFile}`, JSON.stringify(this.config));
       process.stdout.write("\x1b[32mLogged in successfully\x1b[0m\n");
-    } catch (error) {
-      process.stdout.write("\x1b[31mLogin failed\x1b[0m\n");
+    } catch (e) {
+      process.stdout.write(`\x1b[31mLogin failed ${e.toString()}\x1b[0m\n`);
     }
-  };
+  }
 
-  upload = async (filePath) => {
+  async upload(filePath) {
     try {
       const response = await axios.post(
         `${this.url}/files`,
@@ -73,55 +82,77 @@ class CLI {
         }
       );
       process.stdout.write("\x1b[32mFile uploaded successfully\x1b[0m\n");
-    } catch (error) {
-      process.stdout.write("\x1b[31mFile upload failed\x1b[0m\n");
+    } catch (e) {
+      process.stdout.write(
+        `\x1b[31mFile upload failed ${e.toString()}\x1b[0m\n`
+      );
     }
-  };
+  }
 
-  download = async (fileName) => {
+  async download(fileName) {
     try {
       const response = await axios.get(`${this.url}/files/${fileName}`, {
-        headers: this.headers
+        headers: this.headers,
       });
       fs.writeFileSync(`${fileName}`, response.data.data);
       process.stdout.write("\x1b[32mFile downloaded successfully\x1b[0m\n");
-    } catch (error) {
-      process.stdout.write("\x1b[31mFile download failed\x1b[0m\n");
+    } catch (e) {
+      process.stdout.write(
+        `\x1b[31mFile download failed ${e.toString()}\x1b[0m\n`
+      );
     }
-  };
+  }
 
-  list = async () => {
+  async list() {
     try {
       const response = await axios.get(`${this.url}/files`, {
-        headers: this.headers
+        headers: this.headers,
       });
       response.data.forEach((file) => {
         process.stdout.write(`${file.name}\n`);
       });
-    } catch (error) {
+    } catch (e) {
       process.stdout.write("\x1b[31mFile list failed\x1b[0m\n");
+      exit(1);
     }
-  };
+  }
 
-  remove = async (fileName) => {
+  async remove(fileName) {
     try {
-
       const response = await axios.delete(`${this.url}/files/${fileName}`, {
-        headers: this.headers
+        headers: this.headers,
       });
       process.stdout.write("\x1b[32mFile removed successfully\x1b[0m\n");
     } catch (error) {
       process.stdout.write("\x1b[31mFile remove failed\x1b[0m\n");
+      exit(1);
     }
-  };
+  }
 
-  schedule = async (taskId, fileName, cronTime) => {
+  async schedule() {
+    try {
+      const jobs = JSON.parse(this.cronJobs);
+      for (const taskId in jobs) {
+        const job = jobs[taskId];
+        const response = await axios.get(`${this.url}/files/${job.fileName}`, {
+          headers: this.headers,
+        });
+        fs.writeFileSync(`${job.fileName}`, response.data.data);
+        process.stdout.write("\x1b[32mBackup completed successfully\x1b[0m\n");
+      }
+    } catch (e) {
+      process.stdout.write("\x1b[31mBackup failed\x1b[0m\n");
+      exit(1);
+    }
+  }
+
+  async scheduleBackup(taskId, fileName, cronTime) {
     try {
       const isValid = cron.validate(cronTime);
 
       if (!isValid) {
         process.stdout.write("\x1b[31mInvalid cron time\x1b[0m\n");
-        return;
+        exit(1);
       }
 
       const jobs = JSON.parse(this.cronJobs);
@@ -131,48 +162,36 @@ class CLI {
       };
 
       cron.schedule(cronTime, this.backup);
-      fs.writeFileSync(`${this.configDir}/cron_jobs.json`, JSON.stringify(jobs));
+      fs.writeFileSync(
+        `${this.configDir}/cron_jobs.json`,
+        JSON.stringify(jobs)
+      );
       process.stdout.write("\x1b[32mScheduled backup successfully\x1b[0m\n");
-    }
-    catch (error) {
+    } catch (e) {
       process.stdout.write("\x1b[31mScheduled backup failed\x1b[0m\n");
+      exit(1);
     }
   }
 
-  backup = async () => {
-    try {
-      const jobs = JSON.parse(this.cronJobs);
-      for (const taskId in jobs) {
-        const job = jobs[taskId];
-        const response = await axios.get(`${this.url}/files/${job.fileName}`, {
-          headers: this.headers
-        });
-        fs.writeFileSync(`${job.fileName}`, response.data.data);
-        process.stdout.write("\x1b[32mBackup completed successfully\x1b[0m\n");
-      }
-    } catch (error) {
-      process.stdout.write("\x1b[31mBackup failed\x1b[0m\n");
-    }
+  hash(string) {
+    return sha1(string);
   }
 
-  hashToken = (token) => {
-    return sha1(token);
-  };
-
-  decodeToken = (hash) => {
+  decodeHash (hash) {
     return Buffer.from(hash, "base64").toString("utf-8");
-  };
+  }
 
-  getFile = (fileName) => {
+  readFile (fileName) {
     return fs.existsSync(fileName) ? fs.readFileSync(fileName, "utf-8") : null;
   };
 
-  getCredentials = () => {
+  getCredentials() {
     if (this.config) {
       const { body, password } = JSON.parse(this.config);
       process.stdout.write(`\x1b[32m${body}\x1b[0m\n`);
     } else {
       process.stdout.write("\x1b[31mNo credentials found\x1b[0m\n");
+      exit(1);
     }
   };
 }
