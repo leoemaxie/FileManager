@@ -1,0 +1,7 @@
+#!/usr/bin/env node
+import CLI from './cli.js';
+
+
+// Run the CLI
+const cli = new CLI();
+cli.run();

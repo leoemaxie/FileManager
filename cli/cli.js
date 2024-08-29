@@ -2,9 +2,9 @@ import axios from "axios";
 import fs from "fs";
 import "node-cron";
 import "sha1";
-import Help from "./help";
-import envLoader from "../utils/env_loader";
-import CheckArgs from "./argscheck";
+import Help from "./help.js";
+import envLoader from "../utils/env_loader.js";
+import CheckArgs from "./argscheck.js";
 import { exit } from "process";
 
 envLoader();
@@ -12,7 +12,7 @@ envLoader();
 class CLI {
   constructor() {
     this.url = process.env.SERVER_URL || "http://localhost:5000";
-    this.configDir = process.env.FILE_PATH || "/tmp/files_manager";
+    this.configDir = process.env.FILE_PATH || "~/.fmc";
     this.authFile = `${this.configDir}/token.txt`;
     this.configFile = `${this.configDir}/config.json`;
     this.token = this.readFile(this.authFile);
@@ -38,7 +38,8 @@ class CLI {
 
     if (this.commands[command]) {
       if (!CheckArgs.check()) {
-        new Help().getCommandHelp(command);
+        process.stdout.write(this.help.getCommandHelp(command));
+
         exit(1);
       }
       await this.commands[command](...process.argv.slice(3));
@@ -50,7 +51,7 @@ class CLI {
 
   async login(username, password) {
     try {
-      await axios.post(`${this.url}/users/auth`, {
+      await axios.post(`${this.url}/connect`, {
         email: username,
         password: password,
       });
@@ -177,13 +178,13 @@ class CLI {
     return sha1(string);
   }
 
-  decodeHash (hash) {
+  decodeHash(hash) {
     return Buffer.from(hash, "base64").toString("utf-8");
   }
 
-  readFile (fileName) {
+  readFile(fileName) {
     return fs.existsSync(fileName) ? fs.readFileSync(fileName, "utf-8") : null;
-  };
+  }
 
   getCredentials() {
     if (this.config) {
@@ -193,8 +194,7 @@ class CLI {
       process.stdout.write("\x1b[31mNo credentials found\x1b[0m\n");
       exit(1);
     }
-  };
+  }
 }
 
-const cli = new CLI();
-cli.run();
+export default CLI;

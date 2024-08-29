@@ -1,36 +1,36 @@
 class Help {
   constructor() {
     this.commands = {
-      help: [this.help, null],
-      version: [this.version, 1],
+      help: this.help,
+      version: this.version,
       login: this.login,
       upload: this.upload,
       download: this.download,
       list: this.list,
       remove: this.remove,
-      scheduleBackup: this.scheduleBackup,
+      schedule: this.schedule,
     };
-    this.version = "1.0.0";
+    this.ver = "1.0.0";
   }
 
   getCommandHelp(command) {
-    return this.commands[command]();
+    return this.commands[command]().replace(/^\s{8,10}/gm, '');
   }
 
   help() {
     return `
-        File Manager CLI version ${this.version}
+        File Manager CLI version ${this.ver || "1.0.0"} 
         Usage: fmc <command> [options]
 
         Commands:
-            login     Connect to the server
-            upload    Upload a file to the server
-            download  Download a file from the server
-            sync      Sync a directory with the server
-            backup    Backup a directory to the server
-            restore   Restore a directory from the server
+            login           Connect to the server
+            upload          Upload a file to the server
+            download        Download a file from the server
+            sync            Sync a directory with the server
+            backup          Backup a directory to the server
+            restore         Restore a directory from the server
             help [command]  Show help message for a command
-
+                  
         Options:
             -h, --help      Show this help message and exit
             -v, --version   Show version information and exit
@@ -83,7 +83,7 @@ class Help {
         `;
   }
 
-  scheduleBackup() {
+  schedule() {
     return `
         Usage: fmc scheduleBackup <directory> [options]
 
